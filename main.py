@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import os
 import uuid
 from moviepy.editor import VideoFileClip
@@ -17,21 +17,30 @@ def read_root():
 
 @app.post("/convert")
 async def convert_video(file: UploadFile = File(...)):
-    input_ext = os.path.splitext(file.filename)[1].lower()
-    if input_ext != ".mov":
-        return {"error": "❌ Only .mov files are supported"}
+    try:
+        # Проверка расширения
+        input_ext = os.path.splitext(file.filename)[1].lower()
+        if input_ext != ".mov":
+            return JSONResponse(content={"error": "❌ Only .mov files supported"}, status_code=400)
 
-    input_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}.mov")
-    output_path = os.path.join(OUTPUT_DIR, input_path.replace(".mov", ".mp4"))
+        # Уникальные имена
+        uid = str(uuid.uuid4())
+        input_path = os.path.join(UPLOAD_DIR, f"{uid}.mov")
+        output_path = os.path.join(OUTPUT_DIR, f"{uid}.mp4")
 
-    # Сохраняем загруженный файл
-    with open(input_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        # Сохраняем загруженный файл
+        with open(input_path, "wb") as f:
+            f.write(await file.read())
 
-    # Конвертируем в .mp4
-    clip = VideoFileClip(input_path)
-    clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
-    clip.close()
+        # Конвертация
+        clip = VideoFileClip(input_path)
+        clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        clip.close()
 
-    return FileResponse(output_path, media_type="video/mp4", filename="converted.mp4")
+        return FileResponse(output_path, media_type="video/mp4", filename="converted.mp4")
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"💥 Ошибка сервера: {str(e)}"},
+            status_code=500
+        )
